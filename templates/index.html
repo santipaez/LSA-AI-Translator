@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Traductor de LSA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4 shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">Traductor de LSA <span class="badge bg-light text-primary ms-2">IA</span></a>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row justify-content-center">
+            <div class="col-lg-10 col-xl-9">
+                <div class="card shadow-lg mb-5">
+                    <div class="card-header bg-primary text-white">
+                        <h2 class="h4 mb-0">Panel de Transcripción</h2>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="container mt-4">
+                            <div class="header text-center mb-4">
+                                <h1 class="main-title">Traductor de LSA</h1>
+                            </div>
+
+                            {% if error %}
+                                <div class="alert alert-danger" role="alert">{{ error }}</div>
+                            {% endif %}
+
+                            <form method="POST" enctype="multipart/form-data" id="transcription-form" class="mt-4">
+                                <div class="mb-3">
+                                    <label for="youtube_url" class="form-label">URL de YouTube (LSA):</label>
+                                    <input type="url" class="form-control form-control-lg" id="youtube_url" name="youtube_url" placeholder="Ej: https://www.youtube.com/watch?v=xxxxxxx">
+                                </div>
+                                <div class="text-center my-3 fw-bold">O</div>
+                                <div class="mb-3">
+                                    <label for="video_file" class="form-label">Subir archivo de video:</label>
+                                    <input class="form-control form-control-lg" type="file" id="video_file" name="video_file" accept="video/mp4,video/x-m4v,video/*">
+                                    <div class="form-text">Formatos permitidos: MP4, MOV, AVI, MKV.</div>
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button type="submit" class="btn btn-primary btn-lg">
+                                        Transcribir Video
+                                    </button>
+                                </div>
+                            </form>
+
+                            {% if video_display_url or transcription_main_html %}
+                            <div class="row mt-5">
+                                <div class="col-md-6">
+                                    <h3 class="mb-3 section-title">Video Procesado</h3>
+                                    {% if video_display_url %}
+                                        <div class="ratio ratio-16x9 border rounded shadow-sm mb-3">
+                                            <video controls autoplay muted class="rounded">
+                                                <source src="{{ video_display_url }}" type="video/mp4">
+                                                Tu navegador no soporta el tag de video.
+                                            </video>
+                                        </div>
+                                    {% else %}
+                                        <p>El video no está disponible para visualización.</p>
+                                    {% endif %}
+                                </div>
+
+                                <div class="col-md-6">
+                                    <h3 class="mb-3 section-title">Transcripción y Anotaciones</h3>
+                                    
+                                    {% if srt_download_url %}
+                                    <div class="mb-3 text-end">
+                                        <a href="{{ srt_download_url }}" class="btn btn-success btn-sm" download>
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download me-1" viewBox="0 0 16 16">
+                                                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
+                                                <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/>
+                                            </svg>
+                                            Descargar Subtítulos (.srt)
+                                        </a>
+                                    </div>
+                                    {% endif %}
+
+                                    <ul class="nav nav-tabs mb-3" id="transcriptionTabs" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active" id="main-tab" data-bs-toggle="tab" data-bs-target="#main-content" type="button" role="tab" aria-controls="main-content" aria-selected="true">Transcripción Principal</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="annotations-tab" data-bs-toggle="tab" data-bs-target="#annotations-content" type="button" role="tab" aria-controls="annotations-content" aria-selected="false">Anotaciones de LSA</button>
+                                        </li>
+                                    </ul>
+
+                                    <div class="tab-content" id="transcriptionTabsContent">
+                                        <div class="tab-pane fade show active" id="main-content" role="tabpanel" aria-labelledby="main-tab">
+                                            {% if transcription_main_html %}
+                                                <div class="transcription-box p-3 border rounded shadow-sm">
+                                                    {{ transcription_main_html | safe }}
+                                                </div>
+                                            {% else %}
+                                                <p>La transcripción principal no está disponible.</p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="tab-pane fade" id="annotations-content" role="tabpanel" aria-labelledby="annotations-tab">
+                                            {% if transcription_annotations_html %}
+                                                <div class="transcription-box p-3 border rounded shadow-sm">
+                                                    {{ transcription_annotations_html | safe }}
+                                                </div>
+                                            {% else %}
+                                                <p>No hay anotaciones de LSA disponibles para esta transcripción.</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if raw_transcription_for_debug %}
+                            <div class="row mt-4">
+                                <div class="col-12">
+                                    <details class="debug-section">
+                                        <summary class="debug-section-title">DEBUG: Transcripción Cruda de Gemini (clic para ver/ocultar)</summary>
+                                        <pre class="debug-content"><code>{{ raw_transcription_for_debug }}</code></pre>
+                                    </details>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div> <!-- Cierre card-body -->
+                </div> <!-- Cierre card -->
+            </div> <!-- Cierre col -->
+        </div> <!-- Cierre row -->
+    </div> <!-- Cierre container-fluid -->
+
+    <div id="loading-overlay">
+        <div class="spinner-grow text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p class="mt-3 text-primary fw-bold">Procesando video y generando transcripción...</p>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const form = document.getElementById('transcription-form');
+            const overlay = document.getElementById('loading-overlay');
+            const youtubeUrlInput = document.getElementById('youtube_url');
+            const videoFileInput = document.getElementById('video_file');
+
+            if (form) {
+                form.addEventListener('submit', function (event) {
+                    // Validación básica: al menos uno de los campos debe tener valor
+                    if (!youtubeUrlInput.value.trim() && !videoFileInput.files.length) {
+                        event.preventDefault(); // Detener el envío del formulario
+                        alert('Por favor, ingrese una URL de YouTube o seleccione un archivo de video.');
+                        return;
+                    }
+
+                    if (overlay) {
+                        overlay.classList.add('visible');
+                    }
+                });
+            }
+
+            // Si hay resultados (video o transcripción), ocultar el overlay al cargar la página
+            // Esto es útil si el usuario recarga la página o navega hacia atrás/adelante
+            const videoDisplay = document.querySelector('.ratio video'); // Busca si hay un elemento de video mostrándose
+            const transcriptionContent = document.querySelector('.tab-content .tab-pane.active .transcription-box'); // Busca si hay contenido de transcripción
+            
+            if ((videoDisplay && videoDisplay.src) || (transcriptionContent && transcriptionContent.innerHTML.trim() !== "" && !transcriptionContent.querySelector("p:contains('no está disponible')") && !transcriptionContent.querySelector("p:contains('No hay anotaciones')") )) {
+                 // Si hay video o transcripción real, no mostramos el overlay al cargar
+            } else if (overlay && !form.classList.contains('form-submitted-flag')){
+                 // Si no hay resultados y el formulario no se ha enviado (ej. carga inicial), el overlay permanece oculto.
+                 // La clase 'form-submitted-flag' podría ser una forma de recordar si el formulario ya se envió en esta sesión de página,
+                 // pero para simplificar, asumimos que si no hay resultados, no debería haber overlay visible a menos que un envío esté en curso.
+            }
+             // La lógica para ocultar el overlay después de que el servidor responde y la página se recarga
+            // se maneja implicitamente porque el overlay está oculto por defecto por CSS via `display: none`
+            // y solo se hace visible con JS durante el submit.
+            // Si la página se recarga con resultados, el script anterior lo detectaría y no añadiría `visible`.
+        });
+    </script>
+
+</body>
+</html> 
