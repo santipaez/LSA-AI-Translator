@@ -1,0 +1,6 @@
+google-generativeai
+python-dotenv
+flask
+werkzeug
+yt-dlp
+markdown
