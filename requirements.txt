@@ -4,3 +4,5 @@ flask
 werkzeug
 yt-dlp
 markdown
+moviepy
+pysrt
