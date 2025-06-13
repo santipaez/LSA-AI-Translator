@@ -7,7 +7,7 @@ import markdown
 
 from config_loader import load_api_key, get_gemini_client
 from doc_loader import load_lsa_document
-from video_utils import download_video_and_get_info
+from video_utils import download_video_and_get_info, incrustar_subtitulos
 from lsa_transcriber import transcribe_lsa_video
 from srt_utils import markdown_to_srt
 
@@ -56,6 +56,8 @@ def index():
     video_display_url = None
     raw_transcription_for_debug = None
     srt_download_url = None
+    video_with_subs_url = None
+    vtt_subtitles_url = None
 
     if request.method == 'POST':
         if not GEMINI_CLIENT:
@@ -130,6 +132,26 @@ def index():
                         srt_download_url = url_for('download_srt', filename=srt_filename)
                         print(f"DEBUG app.py: Archivo SRT generado y guardado en {srt_filepath}")
                         print(f"DEBUG app.py: URL de descarga SRT: {srt_download_url}")
+                        
+                        # Generar archivo VTT para subtítulos HTML nativos
+                        vtt_content = srt_to_vtt(srt_content)
+                        if vtt_content:
+                            vtt_filename = f"{base_filename_for_srt}.vtt"
+                            vtt_filepath = os.path.join(app.config['SUBTITLES_FOLDER'], vtt_filename)
+                            with open(vtt_filepath, 'w', encoding='utf-8') as f_vtt:
+                                f_vtt.write(vtt_content)
+                            vtt_subtitles_url = url_for('serve_subtitles', filename=vtt_filename)
+                            print(f"DEBUG app.py: Archivo VTT generado y guardado en {vtt_filepath}")
+                            print(f"DEBUG app.py: URL de subtítulos VTT: {vtt_subtitles_url}")
+                        # Incrustar subtítulos en el video usando MoviePy/FFmpeg
+                        try:
+                            video_with_subs_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename_for_srt}_con_subtitulos.mp4")
+                            video_with_subs_path = incrustar_subtitulos(video_path_for_transcription, srt_filepath, video_with_subs_path, prefer_method='moviepy')
+                            video_with_subs_url = url_for('serve_uploaded_video', filename=os.path.basename(video_with_subs_path))
+                            print(f"DEBUG app.py: Video con subtítulos generado en {video_with_subs_path}")
+                        except Exception as e_embed:
+                            print(f"DEBUG app.py: Error al incrustar subtítulos: {e_embed}")
+                            video_with_subs_url = None
                     else:
                         print("DEBUG app.py: No se generó contenido SRT o falta base_filename_for_srt.")
             
@@ -152,7 +174,41 @@ def index():
                            error=error, 
                            video_display_url=video_display_url,
                            raw_transcription_for_debug=raw_transcription_for_debug,
-                           srt_download_url=srt_download_url)
+                           srt_download_url=srt_download_url,
+                           video_with_subs_url=video_with_subs_url,
+                           vtt_subtitles_url=vtt_subtitles_url
+                           )
+
+def srt_to_vtt(srt_content):
+    """
+    Convierte contenido SRT a formato WebVTT para usar en navegadores web.
+    """
+    if not srt_content.strip():
+        return ""
+    
+    vtt_lines = ["WEBVTT", ""]
+    
+    # Procesar cada bloque SRT
+    blocks = srt_content.strip().split('\n\n')
+    for block in blocks:
+        if not block.strip():
+            continue
+        
+        lines = block.strip().split('\n')
+        if len(lines) < 3:
+            continue
+        
+        # Línea de tiempo (convertir comas a puntos para VTT)
+        time_line = lines[1].replace(',', '.')
+        
+        # Texto (desde la línea 3 en adelante)
+        text_content = '\n'.join(lines[2:])
+        
+        vtt_lines.append(time_line)
+        vtt_lines.append(text_content)
+        vtt_lines.append("")
+    
+    return '\n'.join(vtt_lines)
 
 @app.route('/download_srt/<filename>')
 def download_srt(filename):
@@ -161,6 +217,24 @@ def download_srt(filename):
                                  mimetype='text/plain', download_name=filename)
     except FileNotFoundError:
         return "Archivo SRT no encontrado.", 404
+
+@app.route('/subtitles/<filename>')
+def serve_subtitles(filename):
+    """
+    Sirve archivos de subtítulos VTT para usar en el elemento <track> del HTML.
+    """
+    try:
+        # Determinar el tipo MIME basado en la extensión
+        if filename.endswith('.vtt'):
+            mimetype = 'text/vtt'
+        elif filename.endswith('.srt'):
+            mimetype = 'text/plain'
+        else:
+            mimetype = 'text/plain'
+            
+        return send_from_directory(app.config['SUBTITLES_FOLDER'], filename, mimetype=mimetype)
+    except FileNotFoundError:
+        return "Archivo de subtítulos no encontrado.", 404
 
 if __name__ == '__main__':
     app.run(debug=True) 
