@@ -54,15 +54,40 @@
                             <div class="row mt-5">
                                 <div class="col-md-6">
                                     <h3 class="mb-3 section-title">Video Procesado</h3>
-                                    {% if video_display_url %}
-                                        <div class="ratio ratio-16x9 border rounded shadow-sm mb-3">
-                                            <video controls autoplay muted class="rounded">
-                                                <source src="{{ video_display_url }}" type="video/mp4">
-                                                Tu navegador no soporta el tag de video.
-                                            </video>
-                                        </div>
-                                    {% else %}
-                                        <p>El video no está disponible para visualización.</p>
+                                                        {% if video_display_url %}
+                        <div class="ratio ratio-16x9 border rounded shadow-sm mb-3">
+                            <video controls autoplay muted class="rounded" crossorigin="anonymous">
+                                <source src="{{ video_display_url }}" type="video/mp4">
+                                {% if vtt_subtitles_url %}
+                                <track kind="subtitles" src="{{ vtt_subtitles_url }}" srclang="es" label="Español" default>
+                                {% endif %}
+                                Tu navegador no soporta el tag de video.
+                            </video>
+                        </div>
+                        {% if vtt_subtitles_url %}
+                        <div class="alert alert-info">
+                            <small><strong>💡 Tip:</strong> Los subtítulos están disponibles en el video. Puedes activarlos/desactivarlos usando los controles del reproductor.</small>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                        <p>El video no está disponible para visualización.</p>
+                    {% endif %}
+                                    {% if video_with_subs_url %}
+                                    <div class="mt-4">
+                                        <h5 class="mb-2">Video con subtítulos incrustados</h5>
+                                                                <div class="ratio ratio-16x9 border rounded shadow-sm mb-2">
+                            <video controls class="rounded" crossorigin="anonymous">
+                                <source src="{{ video_with_subs_url }}" type="video/mp4">
+                                {% if vtt_subtitles_url %}
+                                <track kind="subtitles" src="{{ vtt_subtitles_url }}" srclang="es" label="Español (backup)">
+                                {% endif %}
+                                Tu navegador no soporta el tag de video.
+                            </video>
+                        </div>
+                                        <a href="{{ video_with_subs_url }}" class="btn btn-info btn-sm mt-1" download>
+                                            Descargar video con subtítulos
+                                        </a>
+                                    </div>
                                     {% endif %}
                                 </div>
 
