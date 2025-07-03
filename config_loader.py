@@ -15,7 +15,7 @@ def load_api_key(env_var_name="GOOGLE_API_KEY", dotenv_path=".env"):
         raise ValueError(f"No se encontró la variable {env_var_name} en el entorno o en {dotenv_path}")
     return api_key
 
-def get_gemini_client(api_key, model_name="models/gemini-2.5-flash-preview-04-17"):
+def get_gemini_client(api_key, model_name="models/gemini-2.5-flash"):
     """
     Configura y retorna el cliente de Gemini listo para usar.
     """
