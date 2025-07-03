@@ -1,5 +1,7 @@
 import os
 import uuid
+import re
+import subprocess
 # import re # No más expresiones regulares por ahora
 from flask import Flask, render_template, request, url_for, send_from_directory, make_response
 from werkzeug.utils import secure_filename
@@ -100,6 +102,12 @@ def index():
                  video_display_url = url_for('serve_uploaded_video', filename=video_filename_for_web)
 
             print(f"DEBUG app.py: Transcribiendo video desde: {video_path_for_transcription}")
+            
+            # Obtener duración del video para validación
+            video_duration = extract_video_duration(video_path_for_transcription)
+            if video_duration:
+                print(f"DEBUG app.py: Duración del video: {video_duration/60:.1f} minutos")
+            
             transcription_markdown_raw = transcribe_lsa_video(
                 GEMINI_CLIENT,
                 video_path_for_transcription,
@@ -110,6 +118,14 @@ def index():
             )
             raw_transcription_for_debug = transcription_markdown_raw 
             print(f"DEBUG app.py: Transcripción CRUDA de Gemini:\n{transcription_markdown_raw}")
+            
+            # Validar completitud de la transcripción
+            if video_duration:
+                is_complete, validation_msg = validate_transcription_completeness(transcription_markdown_raw, video_duration)
+                print(f"DEBUG app.py: {validation_msg}")
+                if not is_complete:
+                    # Agregar advertencia a la transcripción para que sea visible al usuario
+                    transcription_markdown_raw = f"**{validation_msg}**\n\n{transcription_markdown_raw}"
             
             main_lines = []
             annotation_lines = []
@@ -235,6 +251,58 @@ def serve_subtitles(filename):
         return send_from_directory(app.config['SUBTITLES_FOLDER'], filename, mimetype=mimetype)
     except FileNotFoundError:
         return "Archivo de subtítulos no encontrado.", 404
+
+def extract_video_duration(video_path):
+    """
+    Extrae la duración del video usando ffprobe
+    """
+    try:
+        cmd = [
+            'ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            duration_seconds = float(result.stdout.strip())
+            return duration_seconds
+        else:
+            print(f"WARN: No se pudo obtener duración del video: {result.stderr}")
+            return None
+    except Exception as e:
+        print(f"WARN: Error obteniendo duración del video: {e}")
+        return None
+
+def validate_transcription_completeness(transcription_text, video_duration_seconds):
+    """
+    Valida si la transcripción parece completa comparando con la duración del video
+    """
+    if not transcription_text or not video_duration_seconds:
+        return True, "No se puede validar - falta información"
+    
+    # Buscar todos los timestamps en la transcripción
+    timestamp_pattern = r'\((\d{1,2}):(\d{2})(?::(\d{2}))?\-(\d{1,2}):(\d{2})(?::(\d{2}))?\)'
+    matches = re.findall(timestamp_pattern, transcription_text)
+    
+    if not matches:
+        return False, "No se encontraron timestamps en la transcripción"
+    
+    # Obtener el último timestamp
+    last_match = matches[-1]
+    end_hours = int(last_match[3])
+    end_minutes = int(last_match[4])
+    end_seconds = int(last_match[5]) if last_match[5] else 0
+    
+    last_timestamp_seconds = end_hours * 3600 + end_minutes * 60 + end_seconds
+    
+    # Considerar completo si está dentro del 90% de la duración total
+    completion_ratio = last_timestamp_seconds / video_duration_seconds
+    
+    if completion_ratio < 0.9:
+        warning_msg = f"⚠️ ADVERTENCIA: La transcripción parece incompleta. Video: {video_duration_seconds/60:.1f}min, Transcripción hasta: {last_timestamp_seconds/60:.1f}min ({completion_ratio*100:.1f}%)"
+        return False, warning_msg
+    else:
+        success_msg = f"✅ Transcripción completa: {completion_ratio*100:.1f}% del video procesado"
+        return True, success_msg
 
 if __name__ == '__main__':
     app.run(debug=True) 
