@@ -114,11 +114,16 @@ def transcribe_lsa_video(gemini_client, video_path, lsa_doc_text, video_title, v
         )
 
         print("DEBUG: Enviando solicitud a Gemini para generar contenido...")
+        print(f"DEBUG: Tamaño del prompt: {len(prompt)} caracteres")
+        print(f"DEBUG: Video URI: {getattr(video_file_uploaded, 'uri', 'N/A')}")
+        
         response = gemini_client.generate_content(
             contents=[video_file_uploaded, prompt],
-            request_options={"timeout": 1200}
+            request_options={"timeout": 1800}  # Aumentar timeout a 30 minutos para videos largos
         )
         print("DEBUG: Respuesta recibida de Gemini.")
+        print(f"DEBUG: Longitud de la respuesta: {len(response.text) if hasattr(response, 'text') else 'Sin texto'} caracteres")
+        
         transcription = response.text.strip()
         
         if transcription.startswith("```markdown"):
