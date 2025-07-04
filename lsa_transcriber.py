@@ -13,6 +13,121 @@ def load_prompt_template():
     except Exception as e:
         raise RuntimeError(f"Error al cargar la plantilla del prompt: {e}")
 
+def validate_lsa_content(gemini_client, frame_paths):
+    """
+    Valida si los frames de muestra contienen contenido de Lengua de Señas Argentina (LSA).
+    
+    Args:
+        gemini_client: Cliente de Gemini configurado
+        frame_paths: Lista de rutas a los frames extraídos del video
+    
+    Returns:
+        tuple: (is_lsa: bool, confidence_message: str)
+    """
+    if not frame_paths:
+        return False, "No se pudieron extraer frames para validación"
+    
+    # Prompt específico para validación de contenido LSA
+    validation_prompt = """
+Analiza estas imágenes y determina si muestran contenido de Lengua de Señas Argentina (LSA).
+
+CRITERIOS PARA IDENTIFICAR LSA:
+✅ VÁLIDO: Personas usando las manos para comunicarse en lenguaje de señas
+✅ VÁLIDO: Intérpretes de LSA activos con movimientos de manos y expresiones faciales
+✅ VÁLIDO: Comunicación gestual estructurada con manos y brazos
+✅ VÁLIDO: Presentadores o personas en videos informativos usando señas
+
+❌ NO VÁLIDO: Videojuegos, deportes, animaciones sin personas reales
+❌ NO VÁLIDO: Videos musicales, películas, contenido de entretenimiento general
+❌ NO VÁLIDO: Personas hablando normalmente sin usar señas
+❌ NO VÁLIDO: Contenido donde no hay personas visibles
+❌ NO VÁLIDO: Mapas, gráficos, texto, logos sin intérpretes
+
+INSTRUCCIONES:
+- Analiza TODAS las imágenes proporcionadas
+- Busca evidencia clara de comunicación en lenguaje de señas
+- Responde ÚNICAMENTE con una de estas opciones:
+  "SÍ" - si hay evidencia clara de contenido LSA
+  "NO" - si no hay contenido LSA o es otro tipo de video
+  "INCIERTO" - si no puedes determinar con certeza
+
+Respuesta:"""
+
+    uploaded_frames = []
+    try:
+        print(f"DEBUG: Validando contenido LSA con {len(frame_paths)} frames...")
+        
+        # Subir frames a Gemini
+        for i, frame_path in enumerate(frame_paths):
+            if not os.path.exists(frame_path):
+                print(f"WARN: Frame no encontrado: {frame_path}")
+                continue
+                
+            try:
+                frame_file = genai.upload_file(
+                    path=frame_path,
+                    display_name=f"validation_frame_{i+1}",
+                    mime_type="image/jpeg"
+                )
+                uploaded_frames.append(frame_file)
+                print(f"DEBUG: Frame {i+1} subido para validación: {frame_file.name}")
+            except Exception as e:
+                print(f"WARN: Error subiendo frame {frame_path}: {e}")
+        
+        if not uploaded_frames:
+            return False, "No se pudieron subir frames para validación"
+        
+        # Esperar a que los frames estén listos
+        for frame_file in uploaded_frames:
+            max_wait = 30  # Timeout más corto para frames
+            start_time = time.time()
+            
+            while hasattr(frame_file, 'state') and frame_file.state.name == "PROCESSING" and (time.time() - start_time) < max_wait:
+                time.sleep(2)
+                try:
+                    frame_file = genai.get_file(frame_file.name)
+                except:
+                    break
+        
+        # Generar contenido de validación
+        contents = uploaded_frames + [validation_prompt]
+        
+        print("DEBUG: Enviando frames a Gemini para validación LSA...")
+        response = gemini_client.generate_content(
+            contents=contents,
+            request_options={"timeout": 60}  # Timeout corto para validación
+        )
+        
+        if not hasattr(response, 'text') or not response.text:
+            return False, "No se recibió respuesta de validación de Gemini"
+        
+        validation_result = response.text.strip().upper()
+        print(f"DEBUG: Resultado de validación LSA: '{validation_result}'")
+        
+        # Interpretar respuesta
+        if "SÍ" in validation_result or "SI" in validation_result or "YES" in validation_result:
+            return True, "Contenido LSA detectado - procediendo con transcripción completa"
+        elif "NO" in validation_result:
+            return False, "No se detectó contenido de Lengua de Señas en el video"
+        elif "INCIERTO" in validation_result or "UNCERTAIN" in validation_result:
+            return False, "No se pudo determinar si el video contiene contenido LSA"
+        else:
+            # Si la respuesta no es clara, ser conservador
+            return False, f"Respuesta de validación no clara: {validation_result}"
+        
+    except Exception as e:
+        print(f"DEBUG: Error durante validación LSA: {e}")
+        return False, f"Error en la validación: {e}"
+    
+    finally:
+        # Limpiar frames subidos
+        for frame_file in uploaded_frames:
+            try:
+                if hasattr(frame_file, 'name') and frame_file.name:
+                    genai.delete_file(frame_file.name)
+                    print(f"DEBUG: Frame de validación eliminado: {frame_file.name}")
+            except Exception as e:
+                print(f"WARN: No se pudo eliminar frame de validación: {e}")
 
 def transcribe_lsa_video(gemini_client, video_path, lsa_doc_text, video_title, video_description, video_url):
     video_file_uploaded = None
