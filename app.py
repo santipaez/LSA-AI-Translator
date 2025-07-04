@@ -9,8 +9,8 @@ import markdown
 
 from config_loader import load_api_key, get_gemini_client
 from doc_loader import load_lsa_document
-from video_utils import download_video_and_get_info, incrustar_subtitulos
-from lsa_transcriber import transcribe_lsa_video
+from video_utils import download_video_and_get_info, incrustar_subtitulos, extract_sample_frames, cleanup_sample_frames
+from lsa_transcriber import transcribe_lsa_video, validate_lsa_content
 from srt_utils import markdown_to_srt
 
 UPLOAD_FOLDER = 'uploads'
@@ -107,6 +107,39 @@ def index():
             video_duration = extract_video_duration(video_path_for_transcription)
             if video_duration:
                 print(f"DEBUG app.py: Duración del video: {video_duration/60:.1f} minutos")
+            
+            # NUEVA VALIDACIÓN: Verificar si el video contiene contenido LSA
+            print("DEBUG app.py: Iniciando validación de contenido LSA...")
+            sample_frames = None
+            try:
+                # Extraer frames de muestra para validación
+                sample_frames = extract_sample_frames(video_path_for_transcription, num_frames=2)
+                print(f"DEBUG app.py: Extraídos {len(sample_frames)} frames para validación")
+                
+                # Validar contenido LSA
+                is_lsa, validation_message = validate_lsa_content(GEMINI_CLIENT, sample_frames)
+                print(f"DEBUG app.py: Resultado validación LSA: {is_lsa} - {validation_message}")
+                
+                if not is_lsa:
+                    error = f"❌ Validación fallida: {validation_message}. " \
+                           f"Este video no parece contener Lengua de Señas Argentina (LSA). " \
+                           f"Por favor, sube un video donde personas estén comunicándose activamente en LSA."
+                    return render_template('index.html', 
+                                         error=error, 
+                                         video_display_url=video_display_url)
+                
+                print(f"DEBUG app.py: ✅ Validación LSA exitosa: {validation_message}")
+                
+            except Exception as e_validation:
+                print(f"WARN app.py: Error en validación LSA: {e_validation}")
+                # En caso de error en validación, permitir continuar pero advertir al usuario
+                validation_warning = f"⚠️ No se pudo validar el contenido del video ({e_validation}). Procediendo con precaución..."
+                print(f"DEBUG app.py: {validation_warning}")
+            
+            finally:
+                # Limpiar frames temporales
+                if sample_frames:
+                    cleanup_sample_frames(sample_frames)
             
             transcription_markdown_raw = transcribe_lsa_video(
                 GEMINI_CLIENT,
